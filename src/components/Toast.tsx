@@ -40,7 +40,7 @@ const Toast: React.FC<ToastProps> = ({ id, type, title, message, duration = 3000
       initial={{ opacity: 0, x: 100, scale: 0.95 }}
       animate={{ opacity: 1, x: 0, scale: 1 }}
       exit={{ opacity: 0, x: 100, scale: 0.95 }}
-      className={`mb-2 min-w-[300px] max-w-[400px] p-4 rounded-lg border ${colors[type]} backdrop-blur-sm shadow-lg`}
+      className={`mb-2 min-w-[300px] max-w-[400px] p-4 rounded-lg border ${colors[type]} backdrop-blur-sm shadow-lg pointer-events-auto`}
     >
       <div className="flex items-start gap-3">
         <div className="flex-shrink-0 mt-0.5">{icons[type]}</div>
