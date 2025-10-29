@@ -2123,7 +2123,14 @@ def save_raw_api_response(client, zone):
         add_log("WARNING", f"保存API原始响应时出错: {str(e)}")
 
 #移植过来的 send_telegram_msg 函数，适配 app.py 的 config
-def send_telegram_msg(message: str):
+def send_telegram_msg(message: str, reply_markup=None):
+    """
+    发送Telegram消息
+    
+    Args:
+        message: 消息文本
+        reply_markup: 可选的内联键盘（InlineKeyboardMarkup格式）
+    """
     # 使用 app.py 的全局 config 字典
     tg_token = config.get("tgToken")
     tg_chat_id = config.get("tgChatId")
@@ -2143,6 +2150,9 @@ def send_telegram_msg(message: str):
         "chat_id": tg_chat_id,
         "text": message
     }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    
     headers = {"Content-Type": "application/json"}
 
     try:
@@ -2524,6 +2534,228 @@ def set_monitor_interval():
         return jsonify({"status": "success", "message": f"检查间隔已设置为 {interval} 秒"})
     else:
         return jsonify({"status": "error", "message": "设置失败，间隔不能小于60秒"}), 400
+
+@app.route('/api/telegram/set-webhook', methods=['POST'])
+def set_telegram_webhook():
+    """
+    设置 Telegram Bot Webhook
+    """
+    try:
+        data = request.json or {}
+        webhook_url = data.get('webhook_url')
+        
+        tg_token = config.get("tgToken")
+        if not tg_token:
+            return jsonify({"success": False, "error": "未配置 Telegram Bot Token"}), 400
+        
+        if not webhook_url:
+            return jsonify({"success": False, "error": "缺少 webhook_url 参数"}), 400
+        
+        # 验证 URL 格式
+        if not webhook_url.startswith("http://") and not webhook_url.startswith("https://"):
+            return jsonify({"success": False, "error": "Webhook URL 必须以 http:// 或 https:// 开头"}), 400
+        
+        # 确保 URL 指向正确的端点
+        if not webhook_url.endswith("/api/telegram/webhook"):
+            # 如果用户只提供了基础 URL，自动添加端点路径
+            if webhook_url.endswith("/"):
+                webhook_url = webhook_url.rstrip("/") + "/api/telegram/webhook"
+            else:
+                webhook_url = webhook_url + "/api/telegram/webhook"
+        
+        add_log("INFO", f"正在设置 Telegram Webhook: {webhook_url}", "telegram")
+        
+        # 调用 Telegram API 设置 webhook
+        set_url = f"https://api.telegram.org/bot{tg_token}/setWebhook"
+        params = {"url": webhook_url}
+        
+        try:
+            response = requests.post(set_url, params=params, timeout=10)
+            result = response.json()
+            
+            if result.get("ok"):
+                add_log("INFO", f"✅ Telegram Webhook 设置成功: {webhook_url}", "telegram")
+                
+                # 获取 webhook 信息进行验证
+                get_url = f"https://api.telegram.org/bot{tg_token}/getWebhookInfo"
+                info_response = requests.get(get_url, timeout=10)
+                info_result = info_response.json()
+                
+                webhook_info = {}
+                if info_result.get("ok"):
+                    webhook_info = info_result.get("result", {})
+                
+                return jsonify({
+                    "success": True,
+                    "message": "Webhook 设置成功",
+                    "webhook_url": webhook_url,
+                    "webhook_info": webhook_info
+                })
+            else:
+                error_msg = result.get("description", "未知错误")
+                add_log("ERROR", f"Telegram Webhook 设置失败: {error_msg}", "telegram")
+                return jsonify({
+                    "success": False,
+                    "error": f"设置失败: {error_msg}"
+                }), 400
+                
+        except requests.exceptions.RequestException as e:
+            add_log("ERROR", f"请求 Telegram API 失败: {str(e)}", "telegram")
+            return jsonify({
+                "success": False,
+                "error": f"请求失败: {str(e)}"
+            }), 500
+        
+    except Exception as e:
+        add_log("ERROR", f"设置 Telegram Webhook 时出错: {str(e)}", "telegram")
+        import traceback
+        add_log("ERROR", f"错误详情: {traceback.format_exc()}", "telegram")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/telegram/get-webhook-info', methods=['GET'])
+def get_telegram_webhook_info():
+    """
+    获取当前 Telegram Bot Webhook 信息
+    """
+    try:
+        tg_token = config.get("tgToken")
+        if not tg_token:
+            return jsonify({"success": False, "error": "未配置 Telegram Bot Token"}), 400
+        
+        get_url = f"https://api.telegram.org/bot{tg_token}/getWebhookInfo"
+        
+        try:
+            response = requests.get(get_url, timeout=10)
+            result = response.json()
+            
+            if result.get("ok"):
+                webhook_info = result.get("result", {})
+                return jsonify({
+                    "success": True,
+                    "webhook_info": webhook_info
+                })
+            else:
+                return jsonify({
+                    "success": False,
+                    "error": result.get("description", "未知错误")
+                }), 400
+                
+        except requests.exceptions.RequestException as e:
+            add_log("ERROR", f"请求 Telegram API 失败: {str(e)}", "telegram")
+            return jsonify({
+                "success": False,
+                "error": f"请求失败: {str(e)}"
+            }), 500
+        
+    except Exception as e:
+        add_log("ERROR", f"获取 Webhook 信息时出错: {str(e)}", "telegram")
+        return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route('/api/telegram/webhook', methods=['POST'])
+def telegram_webhook():
+    """
+    Telegram webhook端点，处理内联键盘按钮回调
+    """
+    try:
+        data = request.json
+        
+        # 处理callback_query（按钮点击）
+        if data.get("callback_query"):
+            callback_query = data["callback_query"]
+            callback_data = callback_query.get("data", "")
+            message = callback_query.get("message", {})
+            chat_id = message.get("chat", {}).get("id")
+            message_id = message.get("message_id")
+            from_user = callback_query.get("from", {})
+            user_id = from_user.get("id")
+            
+            add_log("INFO", f"收到Telegram回调: user_id={user_id}, callback_data={callback_data[:50]}...", "telegram")
+            
+            # 解析callback_data（可能是JSON或base64编码的）
+            import base64
+            import json
+            
+            try:
+                # 检查是否是base64编码
+                if callback_data.startswith("b64:"):
+                    callback_data_decoded = base64.b64decode(callback_data[4:]).decode('utf-8')
+                    callback_data_obj = json.loads(callback_data_decoded)
+                else:
+                    callback_data_obj = json.loads(callback_data)
+            except Exception as e:
+                add_log("ERROR", f"解析callback_data失败: {str(e)}, data={callback_data}", "telegram")
+                return jsonify({"ok": False, "error": "Invalid callback data"}), 400
+            
+            action = callback_data_obj.get("action")
+            
+            if action == "add_to_queue":
+                plan_code = callback_data_obj.get("planCode")
+                datacenter = callback_data_obj.get("datacenter")
+                options = callback_data_obj.get("options", [])
+                
+                if not plan_code or not datacenter:
+                    return jsonify({"ok": False, "error": "Missing planCode or datacenter"}), 400
+                
+                # 添加到抢购队列
+                queue_item = {
+                    "id": str(uuid.uuid4()),
+                    "planCode": plan_code,
+                    "datacenter": datacenter,
+                    "options": options,
+                    "status": "running",
+                    "createdAt": datetime.now().isoformat(),
+                    "updatedAt": datetime.now().isoformat(),
+                    "retryInterval": 30,
+                    "retryCount": 0,
+                    "lastCheckTime": 0,
+                    "fromTelegram": True  # 标记来自Telegram
+                }
+                
+                queue.append(queue_item)
+                save_data()
+                update_stats()
+                
+                add_log("INFO", f"Telegram用户 {user_id} 通过按钮添加到队列: {plan_code}@{datacenter}", "telegram")
+                
+                # 回复确认消息
+                tg_token = config.get("tgToken")
+                if tg_token:
+                    confirm_message = f"✅ 已添加到抢购队列！\n\n型号: {plan_code}\n机房: {datacenter.upper()}\n配置: {', '.join(options) if options else '默认配置'}\n\n系统将自动尝试下单。"
+                    answer_url = f"https://api.telegram.org/bot{tg_token}/answerCallbackQuery"
+                    send_url = f"https://api.telegram.org/bot{tg_token}/sendMessage"
+                    
+                    # 先回答callback（显示loading提示）
+                    requests.post(answer_url, json={
+                        "callback_query_id": callback_query.get("id"),
+                        "text": "已添加到队列！",
+                        "show_alert": False
+                    }, timeout=5)
+                    
+                    # 发送确认消息
+                    requests.post(send_url, json={
+                        "chat_id": chat_id,
+                        "text": confirm_message,
+                        "reply_to_message_id": message_id
+                    }, timeout=5)
+                
+                return jsonify({"ok": True})
+            
+            else:
+                add_log("WARNING", f"未知的action: {action}", "telegram")
+                return jsonify({"ok": False, "error": f"Unknown action: {action}"}), 400
+        
+        # 处理普通消息（可选，暂时忽略）
+        elif data.get("message"):
+            add_log("DEBUG", "收到Telegram普通消息，暂时忽略", "telegram")
+            return jsonify({"ok": True})
+        
+        return jsonify({"ok": True})
+        
+    except Exception as e:
+        add_log("ERROR", f"处理Telegram webhook时出错: {str(e)}", "telegram")
+        import traceback
+        add_log("ERROR", f"错误详情: {traceback.format_exc()}", "telegram")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 @app.route('/api/monitor/test-notification', methods=['POST'])
 def test_notification():

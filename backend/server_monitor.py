@@ -248,10 +248,14 @@ class ServerMonitor:
                             except Exception as e:
                                 self.add_log("WARNING", f"价格获取过程异常: {str(e)}", "monitor")
                     
-                    # 发送所有通知（复用同一个价格）
-                    for notif in notifications_to_send:
+                    # 按change_type分组发送通知（汇总同一配置的所有有货机房）
+                    available_notifications = [n for n in notifications_to_send if n["change_type"] == "available"]
+                    unavailable_notifications = [n for n in notifications_to_send if n["change_type"] == "unavailable"]
+                    
+                    # 发送有货通知（汇总所有有货的机房到一个通知，带按钮）
+                    if available_notifications:
                         config_desc = f" [{config_info['display']}]" if config_info else ""
-                        self.add_log("INFO", f"准备发送提醒: {plan_code}@{notif['dc']}{config_desc} - {notif['change_type']}", "monitor")
+                        self.add_log("INFO", f"准备发送汇总提醒: {plan_code}{config_desc} - {len(available_notifications)}个机房有货", "monitor")
                         server_name = subscription.get("serverName")
                         
                         # 创建包含价格的配置信息副本
@@ -259,8 +263,38 @@ class ServerMonitor:
                         if config_info_with_price:
                             config_info_with_price["cached_price"] = price_text  # 传递缓存的价格
                         
+                        # 汇总所有有货的机房数据
+                        available_dcs = [{"dc": n["dc"], "status": n["status"]} for n in available_notifications]
+                        self.send_availability_alert_grouped(
+                            plan_code, available_dcs, config_info_with_price, server_name
+                        )
+                        
+                        # 添加到历史记录
+                        if "history" not in subscription:
+                            subscription["history"] = []
+                        
+                        for notif in available_notifications:
+                            history_entry = {
+                                "timestamp": datetime.now().isoformat(),
+                                "datacenter": notif["dc"],
+                                "status": notif["status"],
+                                "changeType": notif["change_type"],
+                                "oldStatus": notif["old_status"]
+                            }
+                            
+                            if config_info:
+                                history_entry["config"] = config_info
+                            
+                            subscription["history"].append(history_entry)
+                    
+                    # 发送无货通知（每个机房单独发送）
+                    for notif in unavailable_notifications:
+                        config_desc = f" [{config_info['display']}]" if config_info else ""
+                        self.add_log("INFO", f"准备发送提醒: {plan_code}@{notif['dc']}{config_desc} - {notif['change_type']}", "monitor")
+                        server_name = subscription.get("serverName")
+                        
                         self.send_availability_alert(plan_code, notif["dc"], notif["status"], notif["change_type"], 
-                                                    config_info_with_price, server_name)
+                                                    config_info, server_name)
                         
                         # 添加到历史记录
                         if "history" not in subscription:
@@ -278,10 +312,10 @@ class ServerMonitor:
                             history_entry["config"] = config_info
                         
                         subscription["history"].append(history_entry)
-                        
-                        # 限制历史记录数量
-                        if len(subscription["history"]) > 100:
-                            subscription["history"] = subscription["history"][-100:]
+                    
+                    # 限制历史记录数量
+                    if len(subscription["history"]) > 100:
+                        subscription["history"] = subscription["history"][-100:]
             
             # 更新状态（需要转换为状态字典）
             new_last_status = {}
@@ -370,6 +404,146 @@ class ServerMonitor:
             # 限制历史记录数量，保留最近100条
             if len(subscription["history"]) > 100:
                 subscription["history"] = subscription["history"][-100:]
+    
+    def send_availability_alert_grouped(self, plan_code, available_dcs, config_info=None, server_name=None):
+        """
+        发送汇总的可用性提醒（一个通知包含多个有货的机房，带内联键盘按钮）
+        
+        Args:
+            plan_code: 服务器型号
+            available_dcs: 有货的数据中心列表 [{"dc": "gra", "status": "available"}, ...]
+            config_info: 配置信息 {"memory": "xxx", "storage": "xxx", "display": "xxx", "options": [...]}
+            server_name: 服务器友好名称
+        """
+        try:
+            import json
+            import base64
+            
+            message = f"🎉 服务器上架通知！\n\n"
+            
+            if server_name:
+                message += f"服务器: {server_name}\n"
+            
+            message += f"型号: {plan_code}\n"
+            
+            if config_info:
+                message += (
+                    f"配置: {config_info['display']}\n"
+                    f"├─ 内存: {config_info['memory']}\n"
+                    f"└─ 存储: {config_info['storage']}\n"
+                )
+            
+            # 添加价格信息
+            price_text = None
+            if config_info and "cached_price" in config_info:
+                price_text = config_info.get("cached_price")
+            
+            if price_text:
+                message += f"\n💰 价格: {price_text}\n"
+            
+            message += f"\n✅ 有货的机房 ({len(available_dcs)}个):\n"
+            for dc_info in available_dcs:
+                dc = dc_info.get("dc", "")
+                status = dc_info.get("status", "")
+                # 数据中心名称映射
+                dc_display_map = {
+                    "gra": "🇫🇷 法国·格拉沃利讷",
+                    "rbx": "🇫🇷 法国·鲁贝",
+                    "sbg": "🇫🇷 法国·斯特拉斯堡",
+                    "bhs": "🇨🇦 加拿大·博舍维尔",
+                    "syd": "🇦🇺 澳大利亚·悉尼",
+                    "sgp": "🇸🇬 新加坡",
+                    "ynm": "🇮🇳 印度·孟买",
+                    "waw": "🇵🇱 波兰·华沙",
+                    "fra": "🇩🇪 德国·法兰克福",
+                    "lon": "🇬🇧 英国·伦敦",
+                    "par": "🇫🇷 法国·巴黎",
+                    "eri": "🇮🇹 意大利·埃里切",
+                    "lim": "🇵🇱 波兰·利马诺瓦"
+                }
+                dc_display = dc_display_map.get(dc.lower(), dc.upper())
+                message += f"  • {dc_display} ({dc.upper()})\n"
+            
+            message += f"\n时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            
+            # 构建内联键盘按钮（每个机房一个按钮，最多每行2个按钮）
+            inline_keyboard = []
+            row = []
+            for idx, dc_info in enumerate(available_dcs):
+                dc = dc_info.get("dc", "")
+                dc_display_map = {
+                    "gra": "🇫🇷 Gra",
+                    "rbx": "🇫🇷 Rbx",
+                    "sbg": "🇫🇷 Sbg",
+                    "bhs": "🇨🇦 Bhs",
+                    "syd": "🇦🇺 Syd",
+                    "sgp": "🇸🇬 Sgp",
+                    "ynm": "🇮🇳 Mum",
+                    "waw": "🇵🇱 Waw",
+                    "fra": "🇩🇪 Fra",
+                    "lon": "🇬🇧 Lon",
+                    "par": "🇫🇷 Par",
+                    "eri": "🇮🇹 Eri",
+                    "lim": "🇵🇱 Lim"
+                }
+                button_text = dc_display_map.get(dc.lower(), dc.upper())
+                
+                # 构建回调数据：planCode|datacenter|options(JSON编码)
+                options = config_info.get("options", []) if config_info else []
+                callback_data = {
+                    "action": "add_to_queue",
+                    "planCode": plan_code,
+                    "datacenter": dc,
+                    "options": options
+                }
+                # Telegram callback_data 最大64字节，使用base64编码压缩
+                callback_data_str = json.dumps(callback_data, ensure_ascii=False, separators=(',', ':'))
+                if len(callback_data_str.encode('utf-8')) > 60:  # 留4字节给base64前缀
+                    # 如果数据太大，使用base64编码
+                    callback_data_encoded = base64.b64encode(callback_data_str.encode('utf-8')).decode('utf-8')
+                    callback_data_final = "b64:" + callback_data_encoded[:60]  # 确保不超过64字节
+                else:
+                    callback_data_final = callback_data_str[:64]
+                
+                row.append({
+                    "text": button_text,
+                    "callback_data": callback_data_final
+                })
+                
+                # 每行最多2个按钮
+                if len(row) >= 2 or idx == len(available_dcs) - 1:
+                    inline_keyboard.append(row)
+                    row = []
+            
+            reply_markup = {"inline_keyboard": inline_keyboard}
+            
+            config_desc = f" [{config_info['display']}]" if config_info else ""
+            self.add_log("INFO", f"正在发送汇总Telegram通知: {plan_code}{config_desc} - {len(available_dcs)}个机房", "monitor")
+            
+            # 调用发送函数，传入reply_markup
+            # 检查send_notification是否支持reply_markup参数
+            import inspect
+            sig = inspect.signature(self.send_notification)
+            if 'reply_markup' in sig.parameters:
+                result = self.send_notification(message, reply_markup=reply_markup)
+            else:
+                # 如果不支持，先尝试用**kwargs方式调用
+                try:
+                    result = self.send_notification(message, **{"reply_markup": reply_markup})
+                except:
+                    # 如果还是不支持，先记录警告然后只发送消息
+                    self.add_log("WARNING", "send_notification函数不支持reply_markup参数，仅发送文字消息", "monitor")
+                    result = self.send_notification(message)
+            
+            if result:
+                self.add_log("INFO", f"✅ Telegram汇总通知发送成功: {plan_code}{config_desc}", "monitor")
+            else:
+                self.add_log("WARNING", f"⚠️ Telegram汇总通知发送失败: {plan_code}{config_desc}", "monitor")
+                
+        except Exception as e:
+            self.add_log("ERROR", f"发送汇总提醒时发生异常: {str(e)}", "monitor")
+            import traceback
+            self.add_log("ERROR", f"错误详情: {traceback.format_exc()}", "monitor")
     
     def send_availability_alert(self, plan_code, datacenter, status, change_type, config_info=None, server_name=None):
         """

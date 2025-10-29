@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { CacheManager } from "@/components/CacheManager";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getApiSecretKey, setApiSecretKey } from "@/utils/apiClient";
+import { api } from "@/utils/apiClient";
 
 const SettingsPage = () => {
   const isMobile = useIsMobile();
@@ -44,6 +45,12 @@ const SettingsPage = () => {
     consumerKey: false,
     tgToken: false
   });
+  
+  // Telegram Webhook 相关状态
+  const [webhookUrl, setWebhookUrl] = useState("");
+  const [webhookInfo, setWebhookInfo] = useState<any>(null);
+  const [isSettingWebhook, setIsSettingWebhook] = useState(false);
+  const [isLoadingWebhookInfo, setIsLoadingWebhookInfo] = useState(false);
 
   // Load current values when component mounts
   useEffect(() => {
@@ -69,6 +76,71 @@ const SettingsPage = () => {
       }));
     }
   }, [formValues.zone]);
+
+  // 加载 Webhook 信息
+  const loadWebhookInfo = async () => {
+    setIsLoadingWebhookInfo(true);
+    try {
+      const response = await api.get('/api/telegram/get-webhook-info');
+      const data = response.data;
+      if (data.success && data.webhook_info) {
+        setWebhookInfo(data.webhook_info);
+        if (data.webhook_info.url) {
+          setWebhookUrl(data.webhook_info.url.replace('/api/telegram/webhook', ''));
+        }
+      }
+    } catch (error: any) {
+      console.error('获取 webhook 信息失败:', error);
+      if (error.response?.data?.error) {
+        toast.error('获取 webhook 信息失败：' + error.response.data.error);
+      }
+    } finally {
+      setIsLoadingWebhookInfo(false);
+    }
+  };
+
+  // 自动检测 Webhook URL（使用当前页面的域名）
+  const autoDetectWebhookUrl = () => {
+    const currentUrl = window.location.origin;
+    setWebhookUrl(currentUrl);
+  };
+
+  // 设置 Webhook
+  const handleSetWebhook = async () => {
+    if (!webhookUrl.trim()) {
+      toast.error('请输入 Webhook URL');
+      return;
+    }
+
+    setIsSettingWebhook(true);
+    try {
+      const response = await api.post('/api/telegram/set-webhook', {
+        webhook_url: webhookUrl
+      });
+      
+      const data = response.data;
+      
+      if (data.success) {
+        toast.success('Webhook 设置成功！');
+        setWebhookInfo(data.webhook_info);
+      } else {
+        toast.error(data.error || '设置失败');
+      }
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error || error.message || '未知错误';
+      toast.error('设置失败：' + errorMsg);
+    } finally {
+      setIsSettingWebhook(false);
+    }
+  };
+
+  // 组件加载时获取 Webhook 信息
+  useEffect(() => {
+    if (tgToken) {
+      loadWebhookInfo();
+      autoDetectWebhookUrl();
+    }
+  }, [tgToken]);
 
   // Handle input changes
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -433,6 +505,135 @@ const SettingsPage = () => {
                       className="cyber-input w-full"
                       placeholder="-100123456789"
                     />
+                  </div>
+
+                  {/* Telegram Webhook 设置 */}
+                  <div className="cyber-grid-line pt-4 mt-4">
+                    <h3 className="text-lg font-semibold mb-3">📱 Telegram Webhook 设置</h3>
+                    <p className="text-xs text-cyber-muted mb-4">
+                      设置 Webhook 后，当服务器有货时可以在 Telegram 中直接点击按钮加入抢购队列
+                    </p>
+                    
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-cyber-muted mb-1 text-sm">
+                          Webhook URL（自动检测当前域名，可手动修改）
+                        </label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={webhookUrl}
+                            onChange={(e) => setWebhookUrl(e.target.value)}
+                            className="cyber-input flex-1"
+                            placeholder="https://your-domain.com"
+                          />
+                          <button
+                            type="button"
+                            onClick={autoDetectWebhookUrl}
+                            className="cyber-button px-4 whitespace-nowrap"
+                            title="自动检测当前域名"
+                          >
+                            自动检测
+                          </button>
+                        </div>
+                        <p className="text-xs text-cyber-muted mt-1">
+                          完整 URL 将自动添加：{webhookUrl}/api/telegram/webhook
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleSetWebhook}
+                          disabled={isSettingWebhook || !tgToken}
+                          className="cyber-button flex-1"
+                        >
+                          {isSettingWebhook ? (
+                            <span className="flex items-center justify-center">
+                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                              </svg>
+                              设置中...
+                            </span>
+                          ) : (
+                            '设置 Webhook'
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={loadWebhookInfo}
+                          disabled={isLoadingWebhookInfo || !tgToken}
+                          className="cyber-button px-4"
+                          title="刷新状态"
+                        >
+                          {isLoadingWebhookInfo ? (
+                            <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                          ) : (
+                            '刷新'
+                          )}
+                        </button>
+                      </div>
+
+                      {/* 显示 Webhook 状态 */}
+                      {webhookInfo && (
+                        <div className="bg-cyber-dark/50 border border-cyber-accent/20 rounded p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-cyber-muted">当前状态：</span>
+                            <span className={`text-xs font-semibold ${
+                              webhookInfo.url ? 'text-green-400' : 'text-yellow-400'
+                            }`}>
+                              {webhookInfo.url ? '✅ 已设置' : '⚠️ 未设置'}
+                            </span>
+                          </div>
+                          
+                          {webhookInfo.url && (
+                            <>
+                              <div>
+                                <span className="text-xs text-cyber-muted block mb-1">Webhook URL：</span>
+                                <code className="text-xs bg-cyber-dark p-1.5 rounded block break-all">
+                                  {webhookInfo.url}
+                                </code>
+                              </div>
+                              
+                              {webhookInfo.pending_update_count !== undefined && (
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs text-cyber-muted">待处理更新：</span>
+                                  <span className="text-xs font-mono">
+                                    {webhookInfo.pending_update_count}
+                                  </span>
+                                </div>
+                              )}
+                              
+                              {webhookInfo.last_error_date && (
+                                <div className="bg-red-500/10 border border-red-500/30 rounded p-2 mt-2">
+                                  <div className="text-xs text-red-400 font-semibold mb-1">⚠️ 最后错误：</div>
+                                  <div className="text-xs text-red-300">
+                                    {new Date(webhookInfo.last_error_date * 1000).toLocaleString('zh-CN')}
+                                  </div>
+                                  {webhookInfo.last_error_message && (
+                                    <div className="text-xs text-red-200 mt-1">
+                                      {webhookInfo.last_error_message}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {!tgToken && (
+                        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded p-3">
+                          <p className="text-xs text-yellow-300">
+                            ⚠️ 请先配置 Telegram Bot Token 才能设置 Webhook
+                          </p>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
