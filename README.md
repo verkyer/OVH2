@@ -34,7 +34,7 @@ ENABLE_API_KEY_AUTH=true
 ### 重启生效
 
 ```bash
-docker-compose restart
+docker-compose up -d
 ```
 
 ---
