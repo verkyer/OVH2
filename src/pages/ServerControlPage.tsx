@@ -4295,10 +4295,10 @@ const ServerControlPage: React.FC = () => {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.9 }}
                 className="cyber-card max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-3 flex-shrink-0">
                   <div className="flex items-center gap-2">
                     <Mail className="w-5 h-5 text-green-400" />
-                    <h3 className="text-xl font-semibold text-cyber-text">
+                    <h3 className="text-lg font-semibold text-cyber-text">
                       变更服务器联系人
                     </h3>
                   </div>
@@ -4310,16 +4310,16 @@ const ServerControlPage: React.FC = () => {
                       setContactBilling('');
                       setContactDialogTab('submit');
                     }}
-                    className="p-2 hover:bg-cyber-grid/50 rounded-lg transition-colors text-cyber-muted hover:text-cyber-text">
+                    className="p-1.5 hover:bg-cyber-grid/50 rounded-lg transition-colors text-cyber-muted hover:text-cyber-text">
                     <X className="w-5 h-5" />
                   </button>
                 </div>
 
                 {/* 标签页 */}
-                <div className="flex gap-2 mb-4 border-b border-cyber-accent/20 flex-shrink-0">
+                <div className="flex gap-2 mb-3 border-b border-cyber-accent/20 flex-shrink-0">
                   <button
                     onClick={() => setContactDialogTab('submit')}
-                    className={`px-4 py-2 font-medium transition-colors ${
+                    className={`px-3 py-1.5 text-sm font-medium transition-colors ${
                       contactDialogTab === 'submit'
                         ? 'text-green-400 border-b-2 border-green-400'
                         : 'text-cyber-muted hover:text-cyber-text'
@@ -4331,7 +4331,7 @@ const ServerControlPage: React.FC = () => {
                       setContactDialogTab('requests');
                       fetchContactChangeRequests();
                     }}
-                    className={`px-4 py-2 font-medium transition-colors ${
+                    className={`px-3 py-1.5 text-sm font-medium transition-colors ${
                       contactDialogTab === 'requests'
                         ? 'text-green-400 border-b-2 border-green-400'
                         : 'text-cyber-muted hover:text-cyber-text'
@@ -4430,7 +4430,7 @@ const ServerControlPage: React.FC = () => {
                   </div>
 
                   {/* 提交按钮 */}
-                  <div className="flex justify-end gap-3 mt-6">
+                  <div className="flex justify-end gap-3 mt-4">
                     <button
                       onClick={() => {
                         setShowChangeContactDialog(false);
@@ -4440,13 +4440,13 @@ const ServerControlPage: React.FC = () => {
                         setContactDialogTab('submit');
                       }}
                       disabled={loadingChangeContact}
-                      className="px-6 py-2.5 border border-cyber-accent/30 rounded-md text-cyber-text hover:bg-cyber-accent/5 transition-colors disabled:opacity-50">
+                      className="px-4 py-2 border border-cyber-accent/30 rounded-md text-sm text-cyber-text hover:bg-cyber-accent/5 transition-colors disabled:opacity-50">
                       取消
                     </button>
                     <button
                       onClick={handleChangeContact}
                       disabled={loadingChangeContact}
-                      className="px-6 py-2.5 border border-cyber-accent/30 rounded-md text-cyber-text hover:bg-cyber-accent/5 transition-colors disabled:opacity-50 flex items-center gap-2">
+                      className="px-4 py-2 border border-cyber-accent/30 rounded-md text-sm text-cyber-text hover:bg-cyber-accent/5 transition-colors disabled:opacity-50 flex items-center gap-2">
                       {loadingChangeContact && <RefreshCw className="w-4 h-4 animate-spin" />}
                       提交变更
                     </button>
@@ -4456,14 +4456,14 @@ const ServerControlPage: React.FC = () => {
 
                 {/* 管理请求标签页 */}
                 {contactDialogTab === 'requests' && (
-                  <div className="space-y-4">
+                  <div className="space-y-3">
                     {/* 刷新按钮 */}
                     <div className="flex justify-end">
                       <button
                         onClick={fetchContactChangeRequests}
                         disabled={loadingContactRequests}
-                        className="px-3 py-2 bg-cyber-grid/50 border border-cyber-accent/30 rounded-lg text-cyber-text hover:bg-cyber-accent/10 disabled:opacity-50 flex items-center gap-2 text-sm">
-                        <RefreshCw className={`w-4 h-4 ${loadingContactRequests ? 'animate-spin' : ''}`} />
+                        className="px-3 py-1.5 bg-cyber-grid/50 border border-cyber-accent/30 rounded-md text-cyber-text hover:bg-cyber-accent/10 disabled:opacity-50 flex items-center gap-2 text-xs">
+                        <RefreshCw className={`w-3.5 h-3.5 ${loadingContactRequests ? 'animate-spin' : ''}`} />
                         刷新
                       </button>
                     </div>
@@ -4478,18 +4478,18 @@ const ServerControlPage: React.FC = () => {
                         暂无联系人变更请求
                       </div>
                     ) : (
-                      <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                      <div className="space-y-2.5">
                         {contactChangeRequests.map((request) => (
                           <div
                             key={request.id}
-                            className="bg-cyber-grid/30 border border-cyber-accent/30 rounded-lg p-4">
-                            <div className="flex items-start justify-between mb-3">
+                            className="bg-cyber-grid/30 border border-cyber-accent/30 rounded-lg p-3">
+                            <div className="flex items-start justify-between mb-2">
                               <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="text-sm font-semibold text-cyber-text">
+                                <div className="flex items-center gap-2 mb-1.5">
+                                  <span className="text-xs font-semibold text-cyber-text">
                                     请求 ID: {request.id}
                                   </span>
-                                  <span className={`px-2 py-1 rounded text-xs ${
+                                  <span className={`px-1.5 py-0.5 rounded text-[10px] ${
                                     request.state === 'done' ? 'bg-green-500/20 text-green-400' :
                                     request.state === 'todo' ? 'bg-yellow-500/20 text-yellow-400' :
                                     request.state === 'doing' ? 'bg-blue-500/20 text-blue-400' :
@@ -4503,7 +4503,7 @@ const ServerControlPage: React.FC = () => {
                                      request.state}
                                   </span>
                                 </div>
-                                <div className="text-sm text-cyber-muted space-y-1">
+                                <div className="text-xs text-cyber-muted space-y-0.5">
                                   {request.serviceDomain && (
                                     <div>服务: {request.serviceDomain}</div>
                                   )}
@@ -4528,30 +4528,30 @@ const ServerControlPage: React.FC = () => {
                             {(request.state === 'todo' || request.state === 'validatingByCustomers') && (
                               <>
                                 {/* 提示信息 */}
-                                <div className="bg-blue-500/10 border border-blue-500/30 rounded-lg p-3 mt-3">
-                                  <div className="flex items-start gap-2">
-                                    <AlertCircle className="w-4 h-4 text-blue-400 flex-shrink-0 mt-0.5" />
-                                    <div className="text-xs text-blue-300">
-                                      <p className="font-semibold mb-1">操作提示：</p>
+                                <div className="bg-blue-500/10 border border-blue-500/30 rounded-md p-2 mt-2">
+                                  <div className="flex items-start gap-1.5">
+                                    <AlertCircle className="w-3.5 h-3.5 text-blue-400 flex-shrink-0 mt-0.5" />
+                                    <div className="text-[11px] text-blue-300">
+                                      <p className="font-semibold mb-0.5">操作提示：</p>
                                       <p>点击"接受"或"拒绝"按钮后，需要输入从邮件中获取的 token 值。如果未收到邮件，请点击"重发邮件"按钮。</p>
                                     </div>
                                   </div>
                                 </div>
                                 
-                                <div className="flex gap-2 mt-3 pt-3 border-t border-cyber-accent/20">
+                                <div className="flex gap-2 mt-2 pt-2 border-t border-cyber-accent/20">
                                   <button
                                     onClick={() => openTokenDialog(request, 'accept')}
-                                    className="flex-1 px-3 py-2 bg-green-500/20 border border-green-500/50 rounded-lg text-green-400 hover:bg-green-500/30 text-sm transition-colors">
+                                    className="flex-1 px-2.5 py-1.5 bg-green-500/20 border border-green-500/50 rounded-md text-green-400 hover:bg-green-500/30 text-xs transition-colors">
                                     接受
                                   </button>
                                   <button
                                     onClick={() => openTokenDialog(request, 'refuse')}
-                                    className="flex-1 px-3 py-2 bg-red-500/20 border border-red-500/50 rounded-lg text-red-400 hover:bg-red-500/30 text-sm transition-colors">
+                                    className="flex-1 px-2.5 py-1.5 bg-red-500/20 border border-red-500/50 rounded-md text-red-400 hover:bg-red-500/30 text-xs transition-colors">
                                     拒绝
                                   </button>
                                   <button
                                     onClick={() => handleResendEmail(request)}
-                                    className="px-3 py-2 bg-blue-500/20 border border-blue-500/50 rounded-lg text-blue-400 hover:bg-blue-500/30 text-sm transition-colors">
+                                    className="px-2.5 py-1.5 bg-blue-500/20 border border-blue-500/50 rounded-md text-blue-400 hover:bg-blue-500/30 text-xs transition-colors">
                                     重发邮件
                                   </button>
                                 </div>
